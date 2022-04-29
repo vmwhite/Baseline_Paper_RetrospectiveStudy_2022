@@ -1,0 +1,626 @@
+---
+title: "MARI analysis for Baseline Paper"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+Step 1. Uploading and cleaning MPD Dataset
+
+```{r}
+#Uploading data sheets from Excel Workbooks####
+require(MASS)
+library(readxl)
+library(xlsx)
+library(dplyr)
+library(lmtest)
+library(BSDA)
+library(DescTools)
+library(ggplot2)
+library("Hmisc")
+library(aod)
+library(tidyverse)
+#library(caret)
+
+####MPD DATA ####
+#Includes post race, sex, Year of Birth, MARI status, Madison/Dane county/WI Residency status, arrests and police contacts [for Property, Societal, Person, and Overdose(OD: which is a subset of societial) instances/crimes]
+
+MPDfile = "./MPD_Data_Updated_022821.xlsx"
+
+df.MARI_referrals_MPD <- read_excel(MPDfile, sheet = "MARI referrals MPD Data")
+
+### MPD DATA CLEANING ###
+  #Filters data for those that were referred between 9/1/17 - 5/30/19, as this is the individuals we have full 6 month data for. This is "All" the referrals used in the following analysis.
+    #df.MARI_referrals_MPD <- df.MARI_referrals_MPD %>% filter(MARI_ID < 218| MARI_ID==1001)
+  #to lower status_verified
+    df.MARI_referrals_MPD$Status_Verified <- tolower(df.MARI_referrals_MPD$Status_Verified)
+  #Adding columns: converting Year of Birth to Age, creating Age column and calculating total arrests/contacts 0-12 months pre/post MARI eligible arrest
+    df.MARI_referrals_MPD <- df.MARI_referrals_MPD %>% mutate(Age = as.numeric(substr(ReferralDate,0,4)) - YearOfBirth, `TotalArrestPre0-12`=`TotalArrest 7-12MPre`+`TotalArrest 0-6MPre`, `TotalContactsPre0-12` = `TotalContact 0-6MPre` +`TotalContact 7-12MPre`,`ODContact 0-12MPre` = `ODContact 0-6MPre` +`ODContact 7-12MPre`, `ODArrest 0-12MPre`= `ODArrest 0-6MPre` + `ODArrest 7-12MPre`, `PersonArrest 0-12MPre`= `PersonArrest 0-6MPre` + `PersonArrest 7-12MPre`, `SocietyArrest 0-12MPre` = `SocietyArrest 0-6MPre`+`SocietyArrest 7-12MPre`, `PropertyArrest 0-12MPre` = `PropertyArrest 0-6MPre` + `PropertyArrest 7-12MPre`, `TotalContact0-12MPost`= `TotalContact0-6MPost` + `TotalContact 7-12MPost`, `ODContact 0-12MPost` = `ODContact 0-6MPost` + `ODContact 7-12MPost`, `TotalArrest 0-12MPost` = `TotalArrest 0-6MPost` + `TotalArrest 7-12MPost`, `ODArrest 0-12MPost` = `ODArrest 0-6MPost` + `ODArrest 7-12MPost`, `PersonArrest 0-12MPost` = `PersonArrest 0-6MPost` + `PersonArrest 7-12MPost`, `SocietyArrest 0-12MPost` =`SocietyArrest 0-6MPost` + `SocietyArrest 7-12MPost`, `PropertyArrest 0-12MPost` = `PropertyArrest 0-6MPost` + `PropertyArrest 7-12MPost`)
+
+### Historical control MPD data ####
+    # Includes post arrests and police contacts [for Property, Societal, Person, and Overdose(OD: which is a subset of societial) instances/crimes] after a MARI eligible offense, the person would have been referred to MARI if MARI had existed at the time.
+
+  df.Control <- read_excel(MPDfile, sheet = "Historical Control MPD Data")
+
+### HC MPD DATA CLEANING ###
+  #Changing name of  1stCrimeDate to referraldate to be consistent with MARI intervention Dataset
+    df.Control <- df.Control %>% rename(ReferralDate=`MARI Eligible Offense Date`)
+  #Adding columns: converting Year of Birth to Age, creating Age column and calculating total arrests/contacts 0-12 months pre/post MARI eligible arrest
+    df.Control <- df.Control %>% mutate(Age = as.numeric(substr(ReferralDate,0,4)) - YearOfBirth, `TotalArrestPre0-12`= `TotalArrest 7-12MPre`+`TotalArrest 0-6MPre`, `TotalContactsPre0-12` = `TotalContact 0-6MPre` +`TotalContact 7-12MPre`,`ODContact 0-12MPre` = `ODContact 0-6MPre` +`ODContact 7-12MPre`, `ODArrest 0-12MPre`= `ODArrest 0-6MPre` + `ODArrest 7-12MPre`, `PersonArrest 0-12MPre`= `PersonArrest 0-6MPre` + `PersonArrest 7-12MPre`, `SocietyArrest 0-12MPre` = `SocietyArrest 0-6MPre`+`SocietyArrest 7-12MPre`, `PropertyArrest 0-12MPre` = `PropertyArrest 0-6MPre` + `PropertyArrest 7-12MPre`, `TotalContact0-12MPost`= `TotalContact0-6MPost` + `TotalContact 7-12MPost`, `ODContact 0-12MPost` = `ODContact 0-6MPost` + `ODContact 7-12MPost`, `TotalArrest 0-12MPost` = `TotalArrest 0-6MPost` + `TotalArrest 7-12MPost`, `ODArrest 0-12MPost` = `ODArrest 0-6MPost` + `ODArrest 7-12MPost`, `PersonArrest 0-12MPost` = `PersonArrest 0-6MPost` + `PersonArrest 7-12MPost`, `SocietyArrest 0-12MPost` =`SocietyArrest 0-6MPost` + `SocietyArrest 7-12MPost`, `PropertyArrest 0-12MPost` = `PropertyArrest 0-6MPost` + `PropertyArrest 7-12MPost`)
+  
+#### Overall Intervention vs Historical Control MPD dataset, df.Both ####
+  #Creating new dataframe with Intervention and Control
+    df.Control$Status_Verified <- ("Control")
+    df.Both <- merge(df.MARI_referrals_MPD,df.Control, all=TRUE)
+    #removing NA values
+    #df.Both <- df.Both[!is.na(df.Both$`TotalArrest 0-6MPost`),]
+    df.MARI_referrals_MPD%>% group_by(Status_Verified) %>% summarise(n = n())
+    df.Control %>% summarise(n = n())
+    
+```
+Step 2. Uploading and cleaning MARI Participant dataset
+```{r}
+#### MARI participant data set #####
+ParticipantFile = "./MARI_Participants 031921 at 0115 pm.xlsx"
+
+#uploading individual spreadsheets===
+    df.MARI_part_MARIform <- read_excel(ParticipantFile,  sheet = "MPD MARI Form")
+    df.MARI_part_ScreeningCall <- read_excel(ParticipantFile,  sheet = "CC Initial Screening Call")       
+    df.MARI_part_AssessInfo <- read_excel(ParticipantFile,  sheet = "CC Arrest Diversion Plan")
+    df.MARI_part_Dis <- read_excel(ParticipantFile,  sheet = "CC FU Discharge")  
+
+# old uploading individual spreadsheets===
+    #df.MARI_part_MARIform <- read_excel("F:/MARI/MARI_Participants_012120.xlsx",  sheet = "MPD MARI Form")===
+    #df.MARI_part_ScreeningCall <- read_excel("F:/MARI/MARI_Participants_012120.xlsx",  sheet = "CC Initial Screening Call")       
+    #df.MARI_part_AssessInfo <- read_excel("F:/MARI/MARI_Participants_012120.xlsx",  sheet = "CC Initial Assess Info")
+    #df.MARI_part_Dis <- read_excel("F:/MARI/MARI_Participants_012120.xlsx",  sheet = "CC FU Discharge")
+    
+#rename mislabeled columns
+#df.MARI_part_AssessInfo <- df.MARI_part_AssessInfo %>% rename(  MARI_ID = 'MARI_ID...1')
+#df.MARI_part_Dis <- df.MARI_part_Dis %>% rename(  MARI_ID = 'MARI_ID...1')
+
+  #combining spreadsheets
+    df.MARI_participants <- merge(df.MARI_part_MARIform, df.MARI_part_ScreeningCall, by=c("MARI_ID" ,  "Gender", "Year_of_birth"))
+    df.MARI_participants <- merge(df.MARI_participants, df.MARI_part_AssessInfo, by=c("MARI_ID"  , "Year_of_birth"))
+    df.MARI_participants <- merge(df.MARI_participants, df.MARI_part_Dis, by="MARI_ID")
+  #Filters data for those that were referred between 9/1/17 - 5/30/19, as this is the individuals we have full 6 month data for. This is "All" the referrals used in the following analysis.
+    #df.MARI_participants<- df.MARI_participants %>% filter(MARI_ID < 218| MARI_ID==1001)
+  
+    #converting Year of Birth to Age, creating Age column==
+    df.MARI_participants <- merge(df.MARI_participants, df.MARI_referrals_MPD[,c(1:5)],by="MARI_ID")
+    df.MARI_participants <- df.MARI_participants %>% mutate(Age = as.numeric(substr(ReferralDate,0,4)) - Year_of_birth)
+  #to lower DIS_Tx_Status and name similar to MPD labels
+    df.MARI_participants$Dis_Tx_Status <- tolower(df.MARI_participants$Dis_Tx_Status)
+    df.MARI_participants$Dis_Tx_Status[df.MARI_participants$Dis_Tx_Status == "successful completion"] <- "graduated successfully"
+    df.MARI_participants$Dis_Tx_Status[df.MARI_participants$Dis_Tx_Status == "non-compliant"] <- "discharged, had assessment"
+    df.MARI_participants$Dis_Tx_Status[df.MARI_participants$Dis_Tx_Status == "re-offended"] <- "discharged, had assessment"
+    df.MARI_participants$Dis_Tx_Status[df.MARI_participants$Reoffense_Discharge == "Deceased"] <- "discharged, had assessment"
+  #to lower MAT_OUD_Y/N and Level of care
+    df.MARI_participants$`MAT_OUD_Y/N` <- tolower(df.MARI_participants$`MAT_OUD_Y/N`)
+    df.MARI_participants$Care_Level.x <- tolower(df.MARI_participants$Care_Level.x)
+    df.MARI_participants$Recovery_Coach_Name <- tolower(df.MARI_participants$Recovery_Coach_Name)
+    df.MARI_participants$Tx_Provider_Organization <- tolower(df.MARI_participants$Tx_Provider_Organization)
+    #creating column for highest Level of Care
+      df.MARI_participants <- df.MARI_participants %>% mutate(HighestLOC=ifelse(grepl("residential", df.MARI_participants$Care_Level.x), "residential", ifelse(grepl("day", df.MARI_participants$Care_Level.x),"intensive", ifelse(grepl("intensive", df.MARI_participants$Care_Level.x), "intensive",ifelse(grepl("out", df.MARI_participants$Care_Level.x),"outpatient",df.MARI_participants$Care_Level.x)))))
+    #Highest level of care to numbers
+      df.MARI_participants <- df.MARI_participants %>% mutate(HighestLOCnum=ifelse(df.MARI_participants$HighestLOC=="residential",3, ifelse(df.MARI_participants$HighestLOC=="intensive",2, ifelse(df.MARI_participants$HighestLOC=="outpatient",1,NA))))
+    #Detoxification to Binary
+     df.MARI_participants <- df.MARI_participants %>%  mutate(Detox=ifelse(is.na(df.MARI_participants$Care_Level.x),df.MARI_participants$Care_Level.x, ifelse(grepl("detox", df.MARI_participants$Care_Level.x),1, 0)))
+    #MAT_Evaluation to Binary
+        df.MARI_participants <- df.MARI_participants %>%  mutate(MAT_Eval=ifelse(is.na(df.MARI_participants$MAT_Evaluation),0, ifelse(grepl("none", df.MARI_participants$MAT_Evaluation),0, 1)))
+
+        
+#The following dataset should be empty and is meant to ensure data consistancy between the MPD and Participant Excel workbooks
+    test <- df.MARI_participants %>% mutate(DisConsis = ifelse(Status_Verified==Dis_Tx_Status,0,1)) %>% filter(DisConsis==1)#
+   # test_two <-  df.MARI_participants %>% mutate(DisConsis = ifelse(Year_of_birth.x==Year_of_birth.y,0,1)) %>% filter(DisConsis==1)
+  #   test_three <-  df.MARI_participants %>% mutate(DisConsis = ifelse(Gender.x==Gender.y,0,1)) %>% filter(DisConsis==1)
+    df.MARI_participants %>% group_by(Dis_Tx_Status) %>% summarise(n = n())
+    df.MARI_participants %>% group_by(Status_Verified) %>% summarise(n = n())
+```
+
+Step 3. Defining Functions
+```{r}
+#Z test 2 sample function
+z.test2sam = function(a, b){
+   n.a = length(a)
+   n.b = length(b)
+   zeta = (mean(a, na.rm = TRUE) - mean(b, na.rm = TRUE)) / (sqrt((sd(a, na.rm = TRUE))^2/n.a + (sd(b, na.rm = TRUE))^2/n.b))
+   pvalue2sided=2*pnorm(-abs(zeta))
+   mylist <- list("Z-score=", zeta, "  p-value=", pvalue2sided)
+   return(mylist)
+}
+
+#Contact/ arrest/ jail summary table ##
+MPD_table = function(a,b){
+    name = b
+    #SummaryTable <- a %>% summarise(count = n(), paste("Mean_",name) := mean(b,na.rm = TRUE), paste0("SD_",name) := sd(b,na.rm = TRUE), paste0("Median_",name) := median(b,na.rm = TRUE), paste0("NA_",name) := sum(is.na(b)), count_twelve_months_none = sum(b== 0, na.rm=TRUE), total_twelve_months = sum(b, na.rm=TRUE)) %>% mutate(count_twelve_months_crime = (count - count_twelve_months_none ), per_crime_none = count_twelve_months_none/count, per_true=count_twelve_months/count)
+    SummaryTable <- a %>% summarise(count = n(), Mean = mean(b,na.rm = TRUE), SD = sd(b,na.rm = TRUE), Median= median(b,na.rm = TRUE), NAnum = sum(is.na(b)), count_twelve_months_none = sum(b== 0, na.rm=TRUE), total_twelve_months = sum(b, na.rm=TRUE)) %>% mutate(count_twelve_months = (count - count_twelve_months_none ), per_crime_none = count_twelve_months_none/count, per_true=count_twelve_months/count)
+  return(SummaryTable)
+}
+chi_fish_tests=function(a,b){
+  con_twelve_crime <- data.frame(a$count_twelve_months_none,a$count_twelve_months) 
+      colnames(con_twelve_crime) <- c("no","yes")
+      ref_twelve_crime <- data.frame(b$count_twelve_months_none,b$count_twelve_months)
+      colnames(ref_twelve_crime) <- c("no","yes")
+      c = chisq.test(rbind(con_twelve_crime,ref_twelve_crime), correct=FALSE)
+
+      d = fisher.test(rbind(con_twelve_crime,ref_twelve_crime))
+      print(list(c,d))
+}
+
+## QQplot
+qqplot = function(a,plotting){
+  gg <- ggplot(data=a, mapping = aes(sample = plotting)) +
+          geom_qq_band(bandType = "ks", mapping = aes(fill = "KS"), alpha = 0.5) +
+          geom_qq_band(bandType = "ts", mapping = aes(fill = "TS"), alpha = 0.5) +
+          geom_qq_band(bandType = "pointwise", mapping = aes(fill = "Normal"), alpha = 0.5) +
+          geom_qq_band(bandType = "boot", mapping = aes(fill = "Bootstrap"), alpha = 0.5) +
+          stat_qq_line() +
+          stat_qq_point() +
+          labs(x = "Theoretical Quantiles", y = "Sample Quantiles") +
+          scale_fill_discrete("Bandtype")
+return(gg)
+  }
+##PPplot 
+pplot = function(a,plotting){
+  gg <- ggplot(data = a, mapping = aes(sample = plotting)) +
+    stat_pp_band() +
+    stat_pp_line() +
+    stat_pp_point() +
+    labs(x = "Probability Points", y = "Cumulative Probability")
+  return(gg)
+}
+```
+
+
+Step 4. Generating Table 1: Demographics for MARI referrals and Control (Groups 2 and 1)
+```{r}
+### Table 1 - Demographics for MARI referals (Group 2). Determining mean, sd, median, count, % for: Age, Gender, Race/Ethnicity, Residency ####
+
+  #Define the file name that will be deleted. Needed in order to rewrite file
+    fn <- "Table1_Demographics_All.xlsx"
+    #Check its existence
+      if (file.exists(fn)) 
+    #Delete file if it exists
+      file.remove(fn)
+  
+  #Total Referrals#
+    #counting total number of Referrals for given time period
+      count_refs <- df.MARI_referrals_MPD %>% summarise(count=n()) %>% mutate( Arm="Referrals")
+    #Saving count output to Demographics spreedsheet  
+      write.xlsx2(count_refs, fn,
+             sheetName="Total_Referrals", append=TRUE)
+    
+  #AGE#
+    #Summartising age for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data
+      AgeSummary_refs <- df.MARI_referrals_MPD %>% summarise(Mean_Age = mean(Age), SD_Age = sd(Age), Median_Age = median(Age), NA_Age = sum(is.na(Age)))
+    #Saving Age summary to Demographics spreedsheet 
+      write.xlsx(AgeSummary_refs, fn,
+             sheetName="Age_Summary", append=TRUE)
+  
+  #Gender#
+    #Summartising gender for all MARI referrals via: Count, %
+      GenderSummary_refs <- df.MARI_referrals_MPD %>% group_by(Gender) %>% summarise(count=n()) %>% mutate(percent = count/sum(count), NA_Gender = sum(is.na(Gender)))
+    #Saving gender summary to Demographics spreedsheet 
+      write.xlsx(GenderSummary_refs, fn,
+             sheetName="Gender_Summary", append=TRUE)
+      
+  #Race#
+    #ALL
+      #Summartising race for all MARI referrals via: Count, %
+        RaceSummary_refs <- df.MARI_referrals_MPD %>% group_by(Race) %>% summarise(count=n()) %>% mutate(percent = count/sum(count), NA_Race = sum(is.na(Race)))
+      #Saving race summary to Demographics spreedsheet 
+        write.xlsx(RaceSummary_refs, fn,
+             sheetName="Race_Summary", append=TRUE)
+    #Agregated White and Other
+      #Summartising race for all MARI referrals via: Count, %
+        RaceSummary2_refs <- df.MARI_referrals_MPD%>% mutate(RaceNew = if_else(Race == "White", 'White', "Other")) %>% group_by(RaceNew) %>% summarise(count=n()) %>% mutate(percent = count/sum(count),NA_Race2 = sum(is.na(RaceNew)))
+      #Saving race summary to Demographics spreadsheet 
+        write.xlsx(RaceSummary2_refs, fn,
+             sheetName="Race_Summary_Aggregated", append=TRUE)
+        
+  #Residency#
+    #Summartising Madison residency for all MARI referrals via: Count, %
+        MadResSummary_refs <- df.MARI_referrals_MPD %>% group_by(`MadisonRes?`) %>% summarise(count=n()) %>% mutate(percent = count/sum(count), NA_Res= sum(is.na(`MadisonRes?`)))
+    #Saving Madison residency summary to Demographics spreadsheet 
+      write.xlsx(MadResSummary_refs, fn,
+             sheetName="MadisonResident_Summary", append=TRUE)
+     #Aggragated Madison Residency - Yes and other
+          MadResSummary_refs2 <-  df.MARI_referrals_MPD%>% mutate(HousingNew = ifelse(`MadisonRes?` == "Yes", 'Yes', "Other")) %>% group_by(HousingNew) %>% summarise(count=n()) %>% mutate(percent = count/sum(count))
+      #Aggragated Madison Residency - NPA and Other
+          NPAResSummary_refs <-  df.MARI_referrals_MPD%>% mutate(HousingNew = ifelse(`MadisonRes?` == "No Permanent Address", 'NPA', "other")) %>% group_by(HousingNew) %>% summarise(count=n()) %>% mutate(percent = count/sum(count))
+          
+#### Table 1 - Demographics for Control (Group 1) #################################################
+  #Total Control#
+    #counting total number of Control
+      count_Cont <- df.Control %>% summarise(count=n()) %>% mutate(Arm="Control")
+    #Saving count output to Demographics spreedsheet  
+      write.xlsx2(count_Cont, fn,
+             sheetName="Total_Control", append=TRUE)
+    
+  #AGE#
+    #Summartising age for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data
+      AgeSummary_Cont <- df.Control %>% summarise(Mean_Age = mean(Age), SD_Age = sd(Age), Median_Age = median(Age), NA_Age = sum(is.na(Age)))
+    #Saving Age summary to Demographics spreedsheet 
+      write.xlsx(AgeSummary_Cont, fn,
+             sheetName="Control_Age_Summary", append=TRUE)
+  
+  #Gender#
+    #Summartising gender for all MARI referrals via: Count, %
+      GenderSummary_Cont <- df.Control %>% group_by(Gender) %>% summarise(count=n()) %>% mutate(percent = count/sum(count), NA_Gender = sum(is.na(Gender)))
+    #Saving gender summary to Demographics spreedsheet 
+      write.xlsx(GenderSummary_Cont, fn,
+             sheetName="Control_Gender_Summary", append=TRUE)
+  #Race#
+    #ALL
+      #Summartising race for all MARI referrals via: Count, %
+        RaceSummary_Cont <- df.Control %>% group_by(Race) %>% summarise(count=n()) %>% mutate(percent = count/sum(count), NA_Race = sum(is.na(Race)))
+      #Saving race summary to Demographics spreedsheet 
+        write.xlsx(RaceSummary_Cont, fn,
+             sheetName="Control_Race_Summary", append=TRUE)
+    #Agregated White and Other
+      #Summartising race for all MARI referrals via: Count, %
+        RaceSummary2_Cont <- df.Control %>% mutate(RaceNew = if_else(Race == "White", 'White', "Other")) %>%  group_by(RaceNew) %>% summarise(count=n()) %>% mutate(percent = count/sum(count),NA_Race2 = sum(is.na(RaceNew)))
+      #Saving race summary to Demographics spreedsheet 
+        write.xlsx(RaceSummary2_Cont, fn,
+             sheetName="Control_Race_Summary_Aggregated", append=TRUE)
+        
+  #Residency#
+    #Summartising Madison residency for all MARI referrals via: Count, %
+        MadResSummary_Cont <- df.Control %>% group_by(`MadisonRes?`) %>% summarise(count=n()) %>% mutate(percent = count/sum(count), NA_Res= sum(is.na(`MadisonRes?`))) 
+    #Saving Madison residency summary to Demographics spreedsheet 
+      write.xlsx(MadResSummary_Cont, fn,
+             sheetName="Control_MadisonResident_Summary", append=TRUE)
+    #Aggragated Madison Residency - NPA and Other
+      NPAResSummary_cont <-  df.Control %>% mutate(HousingNew = ifelse(`MadisonRes?` == "No Permanent Address", 'NPA', "other")) %>% group_by(HousingNew) %>% summarise(count=n()) %>% mutate(percent = count/sum(count))
+```
+
+Step 5. Generating Table 2 - Baseline Statistics for Group 1
+```{r}   
+### Previous Contact / Arrest / Jail_Days Data for Control (Group 1) ###    
+
+ #Define the file name that will be deleted. Needed in order to rewrite file
+    fn <- "Table2_BaselineStatistics_Group1.xlsx"
+    #Check its existence
+      if (file.exists(fn)) 
+    #Delete file if it exists
+      file.remove(fn)
+        
+  ##Contacts for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+    
+      #Total Contacts 0-12 months prior to MARI arrest #
+        `total_Contacts pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`TotalContactsPre0-12`) 
+        write.xlsx(`total_Contacts pre 0-12M_Summary_cont`, fn,
+                sheetName="total_Contacts pre 0-12M_cont", append=TRUE)
+      
+      #OD contacts 0-12 months prior to MARI arrest #
+        `OD_Contacts pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`ODContact 0-12MPre`) 
+        write.xlsx( `OD_Contacts pre 0-12M_Summary_cont`, fn,
+                sheetName="OD_Contact pre 0-12M_cont", append=TRUE)
+        
+  ##Arrests for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+    
+    #total and binary arrests 0-12 months prior to MARI arrest #
+      `total_Arrest pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`TotalArrestPre0-12`) 
+        write.xlsx(`total_Arrest pre 0-12M_Summary_cont`, fn,
+                sheetName="total_Arrest pre 0-12M_cont", append=TRUE)
+    #OD arrests 0-12 months prior to MARI arrest #
+        `OD_Arrest pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`ODArrest 0-12MPre`) 
+        write.xlsx(`OD_Arrest pre 0-12M_Summary_cont`, fn,
+                sheetName="OD_Arrest pre 0-12M_cont", append=TRUE)
+    #Person arrests 0-12 months prior to MARI arrest #
+        `Person_Arrest pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`PersonArrest 0-12MPre`) 
+        write.xlsx(`Person_Arrest pre 0-12M_Summary_cont`, fn,
+                sheetName="Person_Arrest pre 0-12M_cont", append=TRUE)
+    #Society arrests 0-12 months prior to MARI arrest #
+        `Society_Arrest pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`SocietyArrest 0-12MPre`) 
+        write.xlsx(`Society_Arrest pre 0-12M_Summary_cont`, fn,
+            sheetName="Society_Arrest pre 0-12M_cont", append=TRUE)
+    #Property arrests 0-12 months prior to MARI arrest #
+        `Property_Arrest pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`PropertyArrest 0-12MPre`) 
+        write.xlsx(`Property_Arrest pre 0-12M_Summary_cont`, fn,
+                sheetName="Property_Arrest pre 0-12M_cont", append=TRUE)   
+        
+  ##days in jail between 0 and 12##
+      #total and binary jail time in months prior to MARI arrest for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data
+      `JailDays pre 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`Total days in Jail Pre 0-12 Months`) 
+        write.xlsx(`JailDays pre 0-12M_Summary_cont`, fn,
+                sheetName="Jail_Days pre 0-12M_cont", append=TRUE)   
+        
+### Post Contact / Arrest / Jail_Days Data ###           
+        
+  ##Contacts for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+    
+      #Total Contacts 0-12 months post MARI arrest #
+        `total_Contacts post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`TotalContact0-12MPost`) 
+        write.xlsx(`total_Contacts post 0-12M_Summary_cont`, fn,
+                sheetName="total_Contacts post 0-12M_cont", append=TRUE)
+      
+      #OD contacts 0-12 months post  MARI arrest #
+        `OD_Contacts post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`ODContact 0-12MPost`) 
+        write.xlsx( `OD_Contacts post 0-12M_Summary_cont`, fn,
+                sheetName="OD_Contact post 0-12M_cont", append=TRUE)
+        
+  ##Arrests for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+    
+    #total and binary arrests 0-12 months post MARI arrest #
+      `total_Arrest post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`TotalArrest 0-12MPost`) 
+        write.xlsx(`total_Arrest post 0-12M_Summary_cont`, fn,
+                sheetName="total_Arrest post 0-12M_cont", append=TRUE)
+    #OD arrests 0-12 months post  MARI arrest #
+        `OD_Arrest post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`ODArrest 0-12MPost`) 
+        write.xlsx(`OD_Arrest post 0-12M_Summary_cont`, fn,
+                sheetName="OD_Arrest post 0-12M_cont", append=TRUE)
+    #Person arrests 0-12 months post MARI arrest #
+        `Person_Arrest post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`PersonArrest 0-12MPost`) 
+        write.xlsx(`Person_Arrest post 0-12M_Summary_cont`, fn,
+                sheetName="Person_Arrest post 0-12M_cont", append=TRUE)
+    #Society arrests 0-12 months post MARI arrest #
+        `Society_Arrest post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`SocietyArrest 0-12MPost`) 
+        write.xlsx(`Society_Arrest post 0-12M_Summary_cont`, fn,
+            sheetName="Society_Arrest post 0-12M_cont", append=TRUE)
+    #Property arrests 0-12 months post MARI arrest #
+        `Property_Arrest post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`PropertyArrest 0-12MPost`) 
+        write.xlsx(`Property_Arrest post 0-12M_Summary_cont`, fn,
+                sheetName="Property_Arrest post 0-12M_cont", append=TRUE)   
+        
+  ##days in jail between 0 and 12##
+      #total and binary jail time in months post MARI arrest for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data
+      `JailDays post 0-12M_Summary_cont`<-MPD_table(df.Control,df.Control$`Total days in Jail Post 0-12 Months`) 
+        write.xlsx(`JailDays post 0-12M_Summary_cont`, fn,
+                sheetName="Jail_Days post 0-12M_cont", append=TRUE)   
+        
+
+```
+
+Step 6. Generating Table 2 - Statistical Tests - Comparing pre and post Control (group 1)
+```{r}
+##### Comparing pre and post Control ####
+library(exactRankTests)
+#### Contacts ####
+    ## Total Police Contacts ##
+        print("Total Police Contacts Control pre vs post")
+        shapiro.test(df.Control$`TotalContactsPre0-12`)#non-normal <0.05
+      # Total mean distribution: Wilcoxon signed ranks test (aka Sign test), should be used since the data is ordinal (and non-parametric) and paired
+        wilcox.test(df.Control$`TotalContactsPre0-12`,df.Control$`TotalContactsPre0-12`, paired = TRUE, alternative = "two.sided", exact= TRUE, correct=TRUE) 
+        wilcox.exact(df.Control$`TotalContactsPre0-12`,df.Control$`TotalContact0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #Catagorical - num yes/no 
+      chi_fish_tests(`total_Contacts pre 0-12M_Summary_cont`,`total_Contacts post 0-12M_Summary_cont`)
+      
+    ## Overdose Contacts
+      print("Total OD Police Contacts Control pre vs post")
+      shapiro.test(df.Control$`ODContact 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`ODContact 0-12MPre`,df.Control$`ODContact 0-12MPost`, paired = TRUE, alternative = "two.sided") 
+      wilcox.exact(df.Control$`ODContact 0-12MPre`,df.Control$`ODContact 0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      chi_fish_tests(`OD_Contacts pre 0-12M_Summary_cont`,`OD_Contacts post 0-12M_Summary_cont`)
+      
+    ## Total Arrests
+      print("Total Arrests Control pre vs post")
+      shapiro.test(df.Control$`TotalArrestPre0-12`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`TotalArrestPre0-12`,df.Control$`TotalArrest 0-12MPost`, paired = TRUE, alternative = "two.sided") 
+      wilcox.exact(df.Control$`TotalArrestPre0-12`,df.Control$`TotalArrest 0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      chi_fish_tests(`total_Arrest post 0-12M_Summary_cont`,`total_Arrest pre 0-12M_Summary_cont`)
+    
+    ## OD Arrests
+       print("Total OD Arrests Control pre vs post")
+      shapiro.test(df.Control$`ODArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`ODArrest 0-12MPre`,df.Control$`ODArrest 0-12MPost`, paired = TRUE, alternative = "two.sided") 
+      wilcox.exact(df.Control$`ODArrest 0-12MPre`,df.Control$`ODArrest 0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      chi_fish_tests(`OD_Arrest pre 0-12M_Summary_cont`,`OD_Arrest post 0-12M_Summary_cont`)
+      
+    ## Person Arrests
+      print("Total Person Arrests Control pre vs post")
+      shapiro.test(df.Control$`PersonArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`PersonArrest 0-12MPre`,df.Control$`PersonArrest 0-12MPost`, paired = TRUE, alternative = "two.sided") 
+      wilcox.exact(df.Control$`PersonArrest 0-12MPre`,df.Control$`PersonArrest 0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      chi_fish_tests(`Person_Arrest pre 0-12M_Summary_cont`,`Person_Arrest post 0-12M_Summary_cont`)
+     
+    ## Society Arrests
+      print("Total Society Arrests Control pre vs post")
+      shapiro.test(df.Control$`SocietyArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`SocietyArrest 0-12MPre`,df.Control$`SocietyArrest 0-12MPost`, paired = TRUE, alternative = "two.sided") 
+      wilcox.exact(df.Control$`SocietyArrest 0-12MPre`,df.Control$`SocietyArrest 0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      chi_fish_tests(`Society_Arrest pre 0-12M_Summary_cont`,`Society_Arrest post 0-12M_Summary_cont`)
+      
+    ## Property Arrests
+      print("Total Property Arrests Control pre vs post")
+      shapiro.test(df.Control$`PropertyArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`PropertyArrest 0-12MPre`,df.Control$`PropertyArrest 0-12MPost`, paired = TRUE, alternative = "two.sided") 
+      wilcox.exact(df.Control$`PropertyArrest 0-12MPre`,df.Control$`PropertyArrest 0-12MPost`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      chi_fish_tests(`Property_Arrest pre 0-12M_Summary_cont`,`Property_Arrest post 0-12M_Summary_cont`)
+      
+    ## Incarceration
+      print("Total Jail Days Control pre vs post")
+      shapiro.test(df.Control$`Total days in Jail Pre 0-12 Months`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`Total days in Jail Pre 0-12 Months`,df.Control$`Total days in Jail Post 0-12 Months`, paired = TRUE, alternative = "two.sided", correct = TRUE) 
+      wilcox.exact(df.Control$`Total days in Jail Pre 0-12 Months`,df.Control$`Total days in Jail Post 0-12 Months`, paired = TRUE, alternative = "two.sided", exact=TRUE) #due to ties
+      #categorical
+      `Total_JailDays_Pre_0-12M_Summary_Cont` <- MPD_table(df.Control,df.Control$`Total days in Jail Pre 0-12 Months`)
+      `Total_JailDays_Post_0-12M_Summary_Cont` <- MPD_table(df.Control,df.Control$`Total days in Jail Post 0-12 Months`)
+      chi_fish_tests(`Total_JailDays_Post_0-12M_Summary_Cont`, `Total_JailDays_Pre_0-12M_Summary_Cont`)
+```
+
+Step 7. Generating Table 3 - Baseline Statistics for Group 2
+```{r}
+### Previous Contact / Arrest / Jail_Days Data ###            #Define the file name that will be deleted. Needed in order to rewrite file
+    fn <- "Table3_BaselineStatistics_Group2.xlsx"
+    #Check its existence
+      if (file.exists(fn)) 
+    #Delete file if it exists
+      file.remove(fn)
+        
+  ##Contacts for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+    
+      #Total Contacts 0-12 months prior to MARI arrest #
+        `total_Contacts pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`TotalContactsPre0-12`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx(`total_Contacts pre 0-12M_Summary_refs`, fn,
+                sheetName="total_Contacts pre 0-12M_refs", append=TRUE)
+      
+      #OD contacts 0-12 months prior to MARI arrest #
+        `OD_Contacts pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`ODContact 0-12MPre`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx( `OD_Contacts pre 0-12M_Summary_refs`, fn,
+                sheetName="OD_Contact pre 0-12M_refs", append=TRUE)
+        
+  ##Arrests for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+    
+    #total and binary arrests 0-12 months prior to MARI arrest #
+      `total_Arrest pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`TotalArrestPre0-12`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx(`total_Arrest pre 0-12M_Summary_refs`, fn,
+                sheetName="total_Arrest pre 0-12M_refs", append=TRUE)
+    #OD arrests 0-12 months prior to MARI arrest #
+        `OD_Arrest pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`ODArrest 0-12MPre`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx(`OD_Arrest pre 0-12M_Summary_refs`, fn,
+                sheetName="OD_Arrest pre 0-12M_refs", append=TRUE)
+    #Person arrests 0-12 months prior to MARI arrest #
+        `Person_Arrest pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`PersonArrest 0-12MPre`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx(`Person_Arrest pre 0-12M_Summary_refs`, fn,
+                sheetName="Person_Arrest pre 0-12M_refs", append=TRUE)
+    #Society arrests 0-12 months prior to MARI arrest #
+        `Society_Arrest pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`SocietyArrest 0-12MPre`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx(`Society_Arrest pre 0-12M_Summary_refs`, fn,
+            sheetName="Society_Arrest pre 0-12M_refs", append=TRUE)
+    #Property arrests 0-12 months prior to MARI arrest #
+        `Property_Arrest pre 0-12M_Summary_refs`<-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`PropertyArrest 0-12MPre`) 
+      #Saving summary to Demographics spreadsheet 
+        write.xlsx(`Property_Arrest pre 0-12M_Summary_refs`, fn,
+                sheetName="Property_Arrest pre 0-12M_refs", append=TRUE)
+        
+  ##Days in Jail for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data ##
+      #total and binary jail time in months prior to MARI arrest for all MARI referrals via: Mean, Standard Deviation, Median, Missing/NA data
+        jailpreZeroToTwelve_Summary_refs <- df.MARI_referrals_MPD %>% summarise(count = n(),Mean_preJail_zeroToTwelve = mean(`Total days in Jail Pre 0-12 Months`,na.rm = TRUE), SD_preJail_zeroToTwelve  = sd(`Total days in Jail Pre 0-12 Months`,na.rm = TRUE), Median_preJail_zeroToTwelve  = median(`Total days in Jail Pre 0-12 Months`,na.rm = TRUE), NA_preJail_zeroToTwelve  = sum(is.na(`Total days in Jail Pre 0-12 Months`)), count_twelve_months_jail_free = sum(`Total days in Jail Pre 0-12 Months`== 0, na.rm=TRUE), total_twelve_months_jail = sum(`Total days in Jail Pre 0-12 Months`, na.rm=TRUE)) %>% mutate(count_twelve_months_jail = (count - count_twelve_months_jail_free ), per_jail_free = count_twelve_months_jail_free/count, per_jail=count_twelve_months_jail/count)
+       
+        `total_Jaildays pre 0-12M_Summary_refs` <-MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`Total days in Jail Pre 0-12 Months`) 
+        #Saving Previous Arrests summary to Demographics spreedsheet 
+        write.xlsx(`total_Jaildays pre 0-12M_Summary_refs` , fn,
+              sheetName="total_Jaildays pre 0-12M_refs` ", append=TRUE)
+    
+```
+
+Step 8. Generating Table 3 - Statistical tests - Comparing Control to All Mari Participants
+```{r}
+##### Statistical tests - Comparing Control to All Mari Participants ####
+library(qqplotr)
+library(exactRankTests)
+#METHODS: 
+ #1.  Using QQplots and PPplots to visually inspect normal dist, and supplementing with Shaprio-Wilks test. Using Shapiro-Wilks to confirm normality because we have <2,000 
+#2.  If non-normal, non- parametric tests should be used. https://www.statmethods.net/stats/nonparametric.html
+#ties of sign test, use wilcoxon_exact: http://ani.stat.fsu.edu/~jfrade/HOMEWORKS/STA5507/test2/R_codes_for_chapter_10.pdf 
+#note: Mann-Whitner test is the Wilcoxon rank-sum test
+##for all tests we can apply a continouity correction due to discrete distribution, but this adds normal approx to p-value. Therefore, it is better to 
+
+#3.  If normal, parametric tests should be used
+
+####Demographics ####
+  ##Age####
+    #Testing distributiton
+      #MARI referrals Age is non-normal, due to below.
+        qqplot(df.MARI_referrals_MPD, df.MARI_referrals_MPD$Age)
+        pplot(df.MARI_referrals_MPD, df.MARI_referrals_MPD$Age)
+        shapiro.test(df.MARI_referrals_MPD$Age)
+      #Historical Control Age is non-normal, due to below.
+        qqplot(df.Control, df.Control$Age)
+        pplot(df.Control, df.Control$Age)
+        shapiro.test(df.Control$Age)
+      #Conclusion: Mann-Whitney U test / Willcoxon rank sum test should be used since the data is: continuous, non-parametric, and comparingtwo unpaired samples
+        wilcox.test(df.MARI_referrals_MPD$Age,df.Control$Age, correct=TRUE) #discrete
+  ##Gender####
+    chisq.test(cbind(GenderSummary_Cont$count, GenderSummary_refs$count), correct=FALSE)
+    fisher.test(cbind(GenderSummary_Cont$count, GenderSummary_refs$count))
+  ##Race - white and other as categories ##
+    chisq.test(cbind(RaceSummary2_Cont$count, RaceSummary2_refs$count), correct=FALSE)
+    fisher.test(cbind(RaceSummary2_Cont$count, RaceSummary2_refs$count))
+  #residency - comparing Yes and other
+    chisq.test(cbind(NPAResSummary_refs$count,NPAResSummary_cont$count), correct=FALSE)
+    fisher.test(cbind(NPAResSummary_refs$count,NPAResSummary_cont$count))
+
+### Pre Outcomes ####    
+  #### Contacts ####
+    ## Total Police Contacts ##
+        print("Total Police Contacts Control pre vs MARI ALL")
+        shapiro.test(df.Control$`TotalContactsPre0-12`)#non-normal <0.05
+      # Total mean distribution: Wilcoxon signed ranks test (aka Sign test), should be used since the data is ordinal (and non-parametric) and paired
+        wilcox.test(df.Control$`TotalContactsPre0-12`, df.MARI_referrals_MPD$`TotalContactsPre0-12`, alternative = "two.sided", correct = TRUE)
+      #Catagorical - num yes/no 
+      chi_fish_tests(`total_Contacts pre 0-12M_Summary_cont`,`total_Contacts pre 0-12M_Summary_refs`)
+      
+    ## Overdose Contacts
+      print("Total OD Police Contacts Control pre vsMARI ALL")
+      shapiro.test(df.Control$`ODContact 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`ODContact 0-12MPre`,df.MARI_referrals_MPD$`ODContact 0-12MPre`, alternative = "two.sided", correct = TRUE) 
+      #categorical
+      chi_fish_tests(`OD_Contacts pre 0-12M_Summary_cont`,`OD_Contacts pre 0-12M_Summary_refs`)
+      
+#### Arrests #####
+    ## Total Arrests##
+      print("Total Arrests Control pre vs MARI ALL")
+      shapiro.test(df.Control$`TotalArrestPre0-12`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`TotalArrestPre0-12`,df.MARI_referrals_MPD$`TotalArrestPre0-12`, alternative = "two.sided", correct = TRUE) 
+      #categorical
+      chi_fish_tests(`total_Arrest pre 0-12M_Summary_cont`,`total_Arrest pre 0-12M_Summary_refs`)
+    
+    ## OD Arrests
+       print("Total OD Arrests Control pre vs MARI ALL")
+      shapiro.test(df.Control$`ODArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`ODArrest 0-12MPre`,df.MARI_referrals_MPD$`ODArrest 0-12MPre`, alternative = "two.sided", correct = TRUE) 
+      #categorical
+      chi_fish_tests(`OD_Arrest pre 0-12M_Summary_cont`,`OD_Arrest pre 0-12M_Summary_refs`)
+      
+    ## Person Arrests
+      print("Total Person Arrests Control pre vs MARI ALL")
+      shapiro.test(df.Control$`PersonArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`PersonArrest 0-12MPre`,df.MARI_referrals_MPD$`PersonArrest 0-12MPre`,  alternative = "two.sided", correct = TRUE) 
+      #categorical
+      chi_fish_tests(`Person_Arrest pre 0-12M_Summary_cont`,`Person_Arrest pre 0-12M_Summary_refs`)
+     
+    ## Society Arrests
+      print("Total Society Arrests Control pre vs MARI ALL")
+      shapiro.test(df.Control$`SocietyArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`SocietyArrest 0-12MPre`,df.MARI_referrals_MPD$`SocietyArrest 0-12MPre`,  alternative = "two.sided", correct = TRUE) 
+      #categorical
+      chi_fish_tests(`Society_Arrest pre 0-12M_Summary_cont`,`Society_Arrest pre 0-12M_Summary_refs`)
+      
+    ## Property Arrests
+      print("Total Property Arrests Control pre vs MARI ALL")
+      shapiro.test(df.Control$`PropertyArrest 0-12MPre`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`PropertyArrest 0-12MPre`,df.MARI_referrals_MPD$`PropertyArrest 0-12MPre`, alternative = "two.sided", correct = TRUE) 
+      #categorical
+      chi_fish_tests(`Property_Arrest pre 0-12M_Summary_cont`,`Property_Arrest pre 0-12M_Summary_refs`)
+      
+    ## Incarceration
+      print("Total Jail Days Control pre vs MARI ALL")
+      shapiro.test(df.Control$`Total days in Jail Pre 0-12 Months`)
+      #total mean: W sign test
+      wilcox.test(df.Control$`Total days in Jail Pre 0-12 Months`,df.MARI_referrals_MPD$`Total days in Jail Pre 0-12 Months`,  alternative = "two.sided", correct = TRUE) 
+      #categorical
+      `Total_JailDays_Pre_0-12M_Summary_refs` <- MPD_table(df.MARI_referrals_MPD,df.MARI_referrals_MPD$`Total days in Jail Pre 0-12 Months`)
+      chi_fish_tests(`Total_JailDays_Pre_0-12M_Summary_Cont`, `Total_JailDays_Pre_0-12M_Summary_refs`)
+      
+```

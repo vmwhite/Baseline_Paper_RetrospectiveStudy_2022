@@ -1,0 +1,31 @@
+Sub Macro1()
+'
+' Reformat for pasting
+'
+Dim num As Double
+Dim per As Double
+
+    num = Range("I2").Value
+    per = Range("K2").Value
+    per = per * 100
+    per = Round(per, 2)
+    Range("F6").Value = num & " (" & per & ")"
+    
+    tot = Round(Range("H2").Value, 1)
+    mean = Round(Range("C2").Value, 1)
+    SD = Round(Range("D2").Value, 1)
+    Median = Round(Range("E2").Value, 1)
+    
+    Range("F7").Value = tot & " episodes, " & mean & " (" & SD & "), " & Median
+
+    	
+    mean2 = Round(Range("B2").Value, 1)
+    SD2 = Round(Range("C2").Value, 1)
+    num2 = Range("C2")
+    per2 = Range("D2").Value
+    per = per * 100
+    per = Round(per, 1)
+    Range("G7").Value = mean2 & " (" & SD2 & ")" 
+    Range("K7").Value = mean2 & " (" & per2 & ")"
+    
+End Sub
