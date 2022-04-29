@@ -4,7 +4,7 @@ This code repository contains the R code and intermediate analysis used to repor
 
 Zhang, A. et al. A retrospective observational study of law enforcement encounters for opioid-related overdoses and future arrests, incarceration, and overdoses: highlighting the need to break the vicious cycle. (2022)
 
-Baseline_Paper_Analysis_Code.Rmd is the R file used to run the analysis. It was created using R version 3.6.0 and was run with the following pacakge versions:
+Baseline_Paper_Analysis_Code.Rmd is the R file used to run the analysis. It was created using R version 3.6.0 and was run on Platform: x86_64-w64-mingw32/x64 (64-bit), with the following pacakge versions:
 * MASS version 7.3-51.4
 * Readxl verson 1.3.1
 * xlsx version 0.6.1
