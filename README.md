@@ -19,6 +19,7 @@ Baseline_Paper_Analysis_Code.Rmd is the R file used to run the analysis. It was 
 * exactRankTests version 0.8-32
 * qqplotr version 0.0.5
 
+Since the input data files are not able to be stored here, the html file, Baseline_Paper_Analysis_Code.nb.html, shows the generated statistical tests completed by the r code, that is then reported in the paper. To view the file simply download it and open the file using any web browser (e.g., Chrome).
 
 The main R file generates the following three excel files:
 * Table1_Demographics_All.xlsx
@@ -26,8 +27,6 @@ The main R file generates the following three excel files:
 * Table3_BaselineStatistics_Group2.xlsx
 
 The VBACodeforTables.txt file was used to reformat the three excel files into an alternative format that more closely resembles how the tables are reported in the published paper. 
-
-Since the input data files are not able to be stored here, the html file, Baseline_Paper_Analysis_Code.nb.html, shows the generated statistical tests completed by the r code, that is then reported in the paper. To view the file simply download it and open the file using any web browser (e.g., Chrome).
 
 If you have any questions regarding the analysis conducted, please reach out to Veronica White at vmwhite@wisc.edu. 
 
